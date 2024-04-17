@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+project(effectivemoderncpp)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_FLAGS -fno-elide-constructors)
+add_subdirectory(1.DeducingTypes)
+add_subdirectory(2.Auto)
+add_subdirectory(3.MovingToModernCpp)
+add_subdirectory(4.SmartPointers)

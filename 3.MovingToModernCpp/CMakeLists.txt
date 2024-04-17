@@ -1,0 +1,8 @@
+add_executable(item8 item8.cpp)
+add_executable(base10 base10.cpp)
+add_executable(item17 item17.cpp)
+add_executable(base11 base11.cpp)
+add_executable(base11_3 base11_3.cpp)
+add_executable(item14 item14.cpp)
+add_executable(item10 item10.cpp)
+add_executable(base12 base12.cpp)
