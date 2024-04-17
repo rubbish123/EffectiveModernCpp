@@ -10,7 +10,8 @@ struct test1{
 };
 
 struct test2{
-    typedef int SubType;
+    // typedef int SubType;
+    using SubType=int;
 };
 
 template <typename T>
@@ -31,7 +32,6 @@ using myVector=std::vector<T>;
 template <typename T>
 class Widget{
 public:
-    // 使用using的话，就不用typename了
     myVector<T> list;
 };
 
@@ -51,9 +51,9 @@ public:
 int main(){
     // Myclass<test1> class1;
     // class1.foo();
-    // Myclass<test2> class2;
-    // class2.foo();
-    Widget2<int> w2;
-    myVector2<int>::type myvec2={1,2,3};
+    Myclass<test2> class2;
+    class2.foo();
+    // Widget2<int> w2;
+    // myVector2<int>::type myvec2={1,2,3};
     return 0;
 }

@@ -44,10 +44,11 @@ private:
 
 template <typename T>
 void logprocess(T &&param){
+    // process(param);
     process(std::forward<T>(param));
 }
 
-void process(const A &lval){
+void process(A &lval){
     std::cout<<"lval"<<std::endl;
 }
 
@@ -55,7 +56,31 @@ void process(A &&rval){
     std::cout<<"rval"<<std::endl;
 }
 
+template <typename T>
+struct B{
+    void operator()(){
+        std::cout<<"B<T>"<<std::endl;
+    }
+};
+
+template <typename T>
+struct B<T&>{
+    void operator()(){
+        std::cout<<"B<T&>"<<std::endl;
+    }
+};
+
+template <typename T>
+struct B<T&&>{
+    void operator()(){
+        std::cout<<"B<T&&>"<<std::endl;
+    }
+};
+
 int main(){
+    // B<int>()();
+    // B<int&>()();
+    // B<int&&>()();
     #if 0
     int mm=10;
     // 这里T推导为int
@@ -78,10 +103,13 @@ int main(){
     // Annotation aa{10};
     const A a{10};
     A mm=std::move(a);
-    #endif
 
     A a{10};
     logprocess(a);
     logprocess(std::move(a));
-
+    #endif
+    A a(42);
+    logprocess(a);
+    logprocess(std::move(a));
+    return 0;
 }

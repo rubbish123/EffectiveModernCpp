@@ -23,8 +23,14 @@ struct A
     // }
     A(int a,int b)
     {
-        std::cout << "A(int a)" << std::endl;
+        std::cout << "A(int a,int b)" << std::endl;
     }
+
+    A(int a,float b)
+    {
+        std::cout << "A(int a,float b)" << std::endl;
+    }
+
     // A(int a, std::string b)
     // {
     //     std::cout << "A(int a, std::string b)" << std::endl;
@@ -62,8 +68,8 @@ A fun2()
 
 void f(double value)
 {
-    // int i(int(value));
-    int i{int(value)}; 
+    int i(int(value));
+    // int i{int(value)}; 
 }
 
 
@@ -112,15 +118,17 @@ int main()
     // A f = 10, 5;
     // A g(10, 5); 
     // A i = {10, 5};
-    // A j = {10, 5};
+    // A j = (10, 5);
     // fun1({10,5});
     // A MM = fun2();
 
     // fun1(g);
+    // fun1(A{10,5});
     // fun1({10, 5});
+    // f(5.2);
     // people aaa{10, "jif", 18.f};
     // people aaa{.name = "people"};
-    TimerKeeper time_keeper{Timer()};
+    // TimerKeeper time_keeper(Timer());
     // TimerKeeper time_keeper{Timer()};
     // std::vector<int> aaa{1, 2, 3, 4, 5};
 
@@ -137,14 +145,15 @@ int main()
     S a5[3] = {{1, 2}, {3, 4}, {5, 6}}; // 复合类型，原生数组
     S a6[3] = {1, 2, 3, 4, 5, 6};       // 大括号的省略
 
-    std::array<S, 3>
-        a7{{1, 2}, {3, 4}, {5, 6}};      // 复合类型，std::array，编译失败！
+    std::array<S, 3> a7={{1, 2}, {3, 4}, {5, 6}};      // 复合类型，std::array，编译失败！
     // MyStringWithIndex s{"hello world", 1}; // c++17之前都会报错
 
     // std::vector<int> vec{1, 2, 3., 5, 6};
     #endif
     // 调用initializer_list
-    // A aaaa{1,2};
+    A aaaa{1,2};
+    // A aaaa{1,2.f};
     A aaaaaaa{};
-    // A bbbbbbb({});
+    A bbbbbbb({});
+    A ccccccc{{}};
 }
