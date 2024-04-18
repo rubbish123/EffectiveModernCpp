@@ -455,3 +455,173 @@ void logprocess(T &&param){
 }
 ```
 
+# 智能指针
+
+来介绍c++中申请内存的方式。首先是继承自c语言的malloc和free。malloc做的事就是申请一块内存，大小由传入的参数指定（但其实malloc申请的空间会比指定的大小要大一点，因为调用free释放空间的时候并没有告诉它要释放的空间有多大，只是传进了一个指向空间的首地址。所以这个首地址前面其实还有一个固定大小的块来记录一些信息，其中就包含这个空间有多大。然后free会先根据首地址向前面偏移固定字节找到这个记录块，然后根据记录块中的信息来释放空间）
+
+其次是new和delete。new是c++提供的一个运算符，它做三件事
+
+1. 调用operator new来申请空间，这个函数内部还是用malloc实现的
+2. 对operator new得到的指针进行类型转换，转成你要new的那个类型
+3. 调用构造函数在申请到的空间上构造对象
+
+delete做两件事
+
+1. 调用指针指向的对象的析构函数
+2. 使用operator delete释放空间，内部是用free实现的
+
+此外还有一种placement new的方式，它可以在指定的地址上new
+
+```cpp
+Test *t=new Test;
+Test *t2=new (static_cast<void*>(t))Test;
+```
+
+其实它本质上是对operator new进行了重载，在这个重载的版本中operator new只做一件事，就是把传进来的地址返回出去，如下
+
+```cpp
+void* operator new(size_t,void* location){
+	return location;
+}
+```
+
+综上如果我们想控制一个类从创建到消亡的全过程，我们只需要控制四个地方：类的构造函数、类的析构函数、类内重写operator new、类内重写operator delete。
+
+重写operator new和operator delete的目的在于我们可以实现更精细化的控制。比如我要new一堆相同的对象，但是我不想直接new一个对象出来，我想什么时候用到了再new。这种情况下你每次new出来的东西其实是在内存中相距很远的，而且每一个new的结果都有一个记录块来记录信息，会造成浪费。这时我们就可以重写operator new，使用链表的形式来管理多个相同的对象，让每个对象在内存中是紧凑的，减少空间开支。
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+
+class Airplane
+{
+private:
+    struct AirplaneRep
+    {
+        unsigned long miles{10}; // 8
+        char type{'A'};          // 1       16
+    };
+    union
+    {
+        AirplaneRep rep{}; // 16
+        Airplane *next;    // 8
+    };                     // 16
+
+public:
+    unsigned long
+    getMiles()
+    {
+        return rep.miles;
+    }
+    char getType() { return rep.type; }
+    void set(unsigned long m, char t)
+    {
+        rep.miles = m;
+        rep.type = t;
+    }
+    static void *operator new(size_t size);
+    static void operator delete(void *ptr);
+    ~Airplane() { std::cout << "Airplane::~Airplane()" << std::endl; }
+
+private:
+    static const int BLOCK_SIZE;
+    static Airplane *headOfFreeList;
+};
+
+Airplane *Airplane::headOfFreeList;
+const int Airplane::BLOCK_SIZE = 512;
+
+void *Airplane::operator new(size_t size)
+{
+    // if (size != sizeof(Airplane))
+    // {
+    //     return ::operator new(size);
+    // }
+    Airplane *p = headOfFreeList;
+    if (p)
+    {
+        headOfFreeList = p->next;
+    }
+    else
+    {
+        Airplane *newBlock = static_cast<Airplane *>(::operator new(BLOCK_SIZE * sizeof(Airplane)));
+        for (int i = 1; i < BLOCK_SIZE - 1; ++i)
+        {
+            newBlock[i].next = &newBlock[i + 1];
+        }
+        newBlock[BLOCK_SIZE - 1].next = 0;
+        p = newBlock;
+        headOfFreeList = &newBlock[1];
+    }
+    return p;
+}
+
+void Airplane::operator delete(void *ptr)
+{
+    if (ptr == 0)
+    {
+        return;
+    }
+    // if (size != sizeof(Airplane))
+    // {
+    //     ::operator delete(ptr);
+    //     return;
+    // }
+    Airplane *deleteMe = static_cast<Airplane *>(ptr);
+    deleteMe->next = headOfFreeList;
+    headOfFreeList = deleteMe;
+}
+
+int main()
+{
+    Airplane *p3 = new Airplane();
+    auto size = sizeof(Airplane);
+    std::cout << p3 << std::endl;
+    // p3->set(1000, 'A');
+    Airplane *p4 = new Airplane();
+    std::cout << p4 << std::endl;
+    // p4->set(5000, 'A');
+    Airplane *p5 = new Airplane();
+    std::cout << p5 << std::endl;
+
+    delete p3;
+    delete p5;
+    delete p4;
+    free(p3);
+    // std::allocator<int> alloc;
+    // alloc.allocate(10);
+    return 0;
+}
+```
+
+最后说一些new和delete是否需要相同形式。这个问题主要是出在对数组进行delete时。对于简单数据类型构成的数组，在释放时使用delete还是delete[]是没有区别的，因为delete无非就是调用析构函数，再释放空间。而简单数据类型没有析构函数，所以两种写法没有区别。但是当数组中存储的是复杂类型成员，delete和delete[]就有区别了。delete不管数组里有多少个成员，只会调用一次析构函数，如果你在析构函数中有一些释放资源的操作，使用delete就会造成内存泄露。而delete[]会针对数组里每一个成员都调用析构函数，最后再释放空间。所以如果是复杂数据类型组成的数组一定要delete[]。但其实话说回来，为了代码的可读性，还是建议new/delete、new[]/delete[]配套使用。
+
+## item18：对于独占资源使用unique_ptr
+
+## item19：对于共享资源使用shared_ptr
+
+默认情况下，unique_ptr的大小等于原始指针。unique_ptr不支持左值拷贝构造和赋值，但是支持临时右值构造和赋值。
+
+```cpp
+unique_ptr<Test> up1=make_unique<Test>();
+unique_ptr<Test> up2(new Test);
+cout<<"up1="<<up1.get()<<endl;
+cout<<"up2="<<up2.get()<<endl;
+// 左值赋值和构造都是不可以的
+// up1=up2;
+// unique_ptr<Test> up3(up1);
+
+// 使用右值是可以的
+up1=std::move(up2);
+unique_ptr<Test> up3(std::move(up2));
+cout<<"up1="<<up1.get()<<endl;
+cout<<"up3="<<up3.get()<<endl;
+```
+
+![image-20240418140721675](EffectiveModernCpp笔记.assets/image-20240418140721675.png)
+
+
+
+
+
