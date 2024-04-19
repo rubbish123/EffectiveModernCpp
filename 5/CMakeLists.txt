@@ -1,0 +1,1 @@
+add_executable(base17 base17.cpp)
