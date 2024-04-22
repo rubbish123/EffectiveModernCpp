@@ -597,29 +597,159 @@ int main()
 
 最后说一些new和delete是否需要相同形式。这个问题主要是出在对数组进行delete时。对于简单数据类型构成的数组，在释放时使用delete还是delete[]是没有区别的，因为delete无非就是调用析构函数，再释放空间。而简单数据类型没有析构函数，所以两种写法没有区别。但是当数组中存储的是复杂类型成员，delete和delete[]就有区别了。delete不管数组里有多少个成员，只会调用一次析构函数，如果你在析构函数中有一些释放资源的操作，使用delete就会造成内存泄露。而delete[]会针对数组里每一个成员都调用析构函数，最后再释放空间。所以如果是复杂数据类型组成的数组一定要delete[]。但其实话说回来，为了代码的可读性，还是建议new/delete、new[]/delete[]配套使用。
 
-## item18：对于独占资源使用unique_ptr
+## unique_ptr
 
-## item19：对于共享资源使用shared_ptr
-
-默认情况下，unique_ptr的大小等于原始指针。unique_ptr不支持左值拷贝构造和赋值，但是支持临时右值构造和赋值。
+unique_ptr基础用法，默认情况下unique_ptr和原始指针一样大
 
 ```cpp
-unique_ptr<Test> up1=make_unique<Test>();
-unique_ptr<Test> up2(new Test);
-cout<<"up1="<<up1.get()<<endl;
-cout<<"up2="<<up2.get()<<endl;
-// 左值赋值和构造都是不可以的
-// up1=up2;
-// unique_ptr<Test> up3(up1);
+class Test{};
 
-// 使用右值是可以的
-up1=std::move(up2);
-unique_ptr<Test> up3(std::move(up2));
-cout<<"up1="<<up1.get()<<endl;
-cout<<"up3="<<up3.get()<<endl;
+int main(){
+    unique_ptr<Test> a1(new Test);
+    unique_ptr<Test> a2=make_unique<Test>();
+    // a1=a2; // 错误，unique_ptr是move_only的
+    a1=std::move(a2); // move可以
+
+    Test* origin_ptr=a1.get(); // 尽量不要暴露原生指针
+    unique_ptr<Test> a3(a1.release()); // 转移拥有权
+    a3.reset(new Test); // 释放并销毁原有对象,持有一个新对象
+    a3.reset(); // 释放并销毁原有对象
+    a3=nullptr; // 同上
+    
+    // unique_ptr可以用于数组
+    unique_ptr<int[]> a4=make_unique<int[]>(10);
+    for(int i=0;i<10;i++){
+        a4[i]=i*i;
+    }
+    return 0;
+}
 ```
 
-![image-20240418140721675](EffectiveModernCpp笔记.assets/image-20240418140721675.png)
+unique_ptr可以自定义删除器，当unique_ptr离开其所在的作用域要被析构的时候会执行这个删除器。删除器接受的种类很多，可以是函数、可调用对象、lambda表达式和std::function。要注意删除器有一个参数，就是unique_ptr所指向的类的原始指针
+
+使用lambda表达式定义删除器
+
+```cpp
+auto lambda=[=](Test*){
+    cout<<a<<kkk<<c<<d<<b<<endl;
+};
+unique_ptr<Test,decltype(lambda)> a6(new Test(),lambda);
+```
+
+需要注意的是删除器是算在unique_ptr的类型里的，所以删除器的大小会影响unique_ptr的大小。如果使用函数作为删除器，函数指针大小为4，则unique_ptr的大小为8（32位平台）。如果使用可调用对象、lambda表达式或者std::function作为删除器，则unique_ptr的大小可能更大。
+
+## shared_ptr
+
+shared_ptr强调共享所有权，就是说多个shared_ptr可以拥有同一个原生指针的所有权。基本用法如下
+
+```cpp
+class Test{};
+
+int main(){
+    shared_ptr<Test> a1(new Test);
+    shared_ptr<Test> a2=a1; // 允许共享所有权
+    Test* origin_a=a1.get(); // 尽量不要暴露原生指针
+    if(a1){
+        // a1拥有指针
+    }
+    if(a1.unique()){
+        // 如果返回true,引用计数为1
+    }
+    long a1_use_count=a1.use_count(); // 引用计数数量
+}
+```
+
+shared_ptr的大小就是两个原生指针的大小，32位平台为8字节，64位平台16字节。shared_ptr和unique_ptr一样也支持自定义删除器，但是自定义删除器的大小不会影响shared_ptr的大小，这和shared_ptr的实现原理有关。
+
+```cpp
+element_type*    _M_ptr;         // Contained pointer.
+__shared_count<_Lp>  _M_refcount;    // Reference counter.
+```
+
+shared_ptr有两个成员变量，一个指向堆上所管理的数据的地址，还有一个指向控制块的地址，其中包含引用计数、weak_ptr计数、删除器和分配器。因此删除器是不算在shared_ptr的类型中的，因此不会影响大小。
+
+![image-20240422160639861](EffectiveModernCpp笔记.assets/image-20240422160639861.png)
+
+因为shared_ptr实现引用计数和自动析构依赖于其所指向的控制块，所以知道这个控制块什么时候会生成很重要。控制块的生成时机如下
+
+- 使用std::make_shared
+- 通过unique_ptr构造shared_ptr
+- 向shared_ptr的构造函数传入一个裸指针
+
+因此控制块和原始资源应当是一对一关联的。如果有两个不同的控制块和同一个原始资源关联了，那大概率会有多次释放的风险
+
+注意shared_ptr在c++17之前不能管理数组
+
+## weak_ptr
+
+`weak_ptr` 比较特殊，它主要是为了配合`shared_ptr`而存在的。就像它的名字一样，它本身是一个弱指针，因为它本身是不能直接调用原生指针的方法的。如果想要使用原生指针的方法，需要将其先转换为一个`shared_ptr`。那`weak_ptr`存在的意义到底是什么呢？
+
+由于`shared_ptr`是通过引用计数来管理原生指针的，那么最大的问题就是循环引用（比如 a 对象持有 b 对象，b 对象持有 a 对象），这样必然会导致内存泄露。而`weak_ptr`不会增加引用计数，因此将循环引用的一方修改为弱引用，可以避免内存泄露。
+
+循环引用，因为A类和B类中都有shared_ptr引用对方，所以造成了循环引用，无法正确析构
+
+```cpp
+class B;
+class A{
+public:
+    A(){
+        cout<<"A"<<endl;
+    }
+    ~A(){
+        cout<<"delete A"<<endl;
+    }
+    shared_ptr<B> m_b;
+};
+
+class B{
+public:
+    B(){
+        cout<<"B"<<endl;
+    }
+    ~B(){
+        cout<<"delete B"<<endl;
+    }
+    shared_ptr<A> m_a;
+};
+
+int main(){
+    shared_ptr<A> a(new A); // A的引用计数为1
+    shared_ptr<B> b(new B); // B的引用计数为1
+    a->m_b=b; // B的引用计数增加为2
+    b->m_a=a; // A的引用计数增加为2
+    cout<<a.use_count()<<endl;
+    cout<<b.use_count()<<endl;
+    return 0;
+}
+```
+
+没有调用析构函数
+
+![image-20240422164016550](EffectiveModernCpp笔记.assets/image-20240422164016550.png)
+
+改为B中改为weak_ptr之后就正常了，可以看到把shared_ptr赋值给weak_ptr并不会增加引用计数
+
+![image-20240422164151319](EffectiveModernCpp笔记.assets/image-20240422164151319.png)
+
+weak_ptr基本用法
+
+```cpp
+class A{};
+
+int main(){
+    shared_ptr<A> a1(new A);
+    weak_ptr<A> weak_a1=a1;
+    if(weak_a1.expired()){
+        // 为true代表weak_a1对用的原生指针已经被释放
+    }
+    long a1_use_count=weak_a1.use_count(); // 引用计数
+    if(shared_ptr<A> shared_a=weak_a1.lock()){
+        // 成功就把weak_ptr提升为shared_ptr,失败就是一个nullptr的shared_ptr
+    }
+    weak_a1.reset(); // 置空
+    return 0;
+}
+```
 
 
 
